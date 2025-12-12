@@ -1,6 +1,58 @@
 import glfw
 import opengl
 
+
+var defaultVertexShader: cstring =
+    """
+    #version 330 core
+    layout (location = 0) in vec3 aPos;
+    
+    void main()
+    {
+        gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+    }
+    """
+
+var defaultFragmentShader: cstring =
+        """
+    #version 330 core
+    out vec4 FragColor;
+    void main()
+    {
+        FragColor = vec4(1.0, 0.5, 0.2, 1.0);
+    }
+    """
+
+type
+  Shader* = object
+    id*: GLuint
+
+proc compileShader*(source: cstring; shaderType: GLenum): Shader =
+    var shader = glCreateShader(shaderType)
+
+    # convert cstring -> string so Nim stops crying
+    let srcStr = $source
+    let srcArr = allocCStringArray([srcStr])
+
+    glShaderSource(shader, 1, srcArr, nil)
+    deallocCStringArray(srcArr)
+
+    glCompileShader(shader)
+
+    var success: GLint
+    glGetShaderiv(shader, GL_COMPILE_STATUS, addr success)
+
+    if success == 0:
+        var infoLog: array[0..512, char]
+        glGetShaderInfoLog(shader, 512, nil, addr infoLog[0])
+        echo "Shader COMPILATION FAILED:"
+        echo cast[cstring](addr infoLog[0])
+        quit(1)
+
+    result.id = shader
+
+
+
 type
     ## `Window` is a small wrapper around a GLFW window handle and metadata.
     Window* = object
@@ -13,15 +65,21 @@ type
         green*: float
         blue*: float
         alpha*: float
+        vertexShader*: Shader
+        fragmentShader*: Shader
 
 ## Create and initialize a new GLFW window. This uses the low-level
 ## GLFW API (`createWindow`, `makeContextCurrent`, `swapInterval`).
-proc NWindow*(width: int; height: int; title: string; vsync = true; red: float; green:float; blue:float; alpha: float): Window =
+proc NWindow*(width: int; height: int; title: string; vsync = true; red: float; green:float; blue:float; alpha: float, fragmentShader: cstring = defaultFragmentShader, vertexShader: cstring = defaultVertexShader): Window =
     glfw.initialize()
+
     var c = DefaultOpenglWindowConfig
 
     c.size = (width, height)
     c.title = title
+    c.version = glv33          # This is the part you MUST change
+    c.forwardCompat = true
+
     let w = newWindow(c)
     if w == nil:
         terminate()
@@ -32,9 +90,13 @@ proc NWindow*(width: int; height: int; title: string; vsync = true; red: float; 
         swapInterval(1)
     else:
         swapInterval(0)
-    glClearColor(red, green, blue, alpha)
-    makeContextCurrent(w)
+
     loadExtensions()
+    glClearColor(red, green, blue, alpha)
+
+
+    var id: Shader = compileShader(vertexShader, GL_VERTEX_SHADER)
+    var id2: Shader = compileShader(fragmentShader, GL_FRAGMENT_SHADER)
 
     result.w = w
     result.width = width
@@ -45,6 +107,8 @@ proc NWindow*(width: int; height: int; title: string; vsync = true; red: float; 
     result.green = green
     result.blue = blue
     result.alpha = alpha
+    result.vertexShader = id
+    result.fragmentShader = id2
 
 proc makeContextCurrent*(w: var Window) =
     if w.w != nil:
@@ -68,39 +132,11 @@ proc destroy*(w: var Window) =
         w.w.destroy()
         glfw.terminate()
 
-type
-  Shader* = object
-    id*: GLuint
-
-proc compileShader*(source: cstring; shaderType: GLenum): Shader =
-    var shader: GLuint = glCreateShader(shaderType)
-
-    # Nim bindings require cstringArray, not array[…]
-    var srcArr: cstringArray = cast[cstringArray](addr source)
-    glShaderSource(shader, 1, srcArr, nil)
-
-    var success: GLint
-    glGetShaderiv(shader, GL_COMPILE_STATUS, addr success)
-
-    if success == 0:   # GL_FALSE is 0
-        var infoLog: array[0..512, char]
-        glGetShaderInfoLog(shader, 512, nil, addr infoLog[0])
-        quit("ERROR::SHADER::COMPILATION_FAILED\n" &
-            $cast[cstring](addr infoLog[0]))
-
-    result.id = shader
-
-type
-    App* = object
-        window*: Window
-        vertexShader*: Shader
-        fragmentShader*: Shader
 
 
-proc initApp*(width: int; height: int; title: string, vertexShader: string,fragmentShader: string): App =
-    result.window = NWindow(width, height, title, vsync = true, 0.2, 0.3, 0.3, 1.0)
-    result.vertexShader = compileShader(vertexShader.cstring, GL_VERTEX_SHADER)
-    result.fragmentShader = compileShader(fragmentShader.cstring, GL_FRAGMENT_SHADER)
+
+
+
 
 
 
