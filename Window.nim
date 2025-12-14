@@ -147,4 +147,3 @@ proc destroy*(w: var Window) =
 
 
 
-
