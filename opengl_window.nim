@@ -1,4 +1,5 @@
 import window
+import glfw
 
 
 var w = NWindow(1000, 1000, "OpenGL Window", vsync = true, 0.2, 0.3, 0.3, 1.0,)
@@ -59,15 +60,21 @@ let cubeVertices: seq[float32] = @[
   -0.5, -0.5, -0.5
 ]
 
+var cube = createModel(w.program, cubeVertices)
 
 
 
+var angle = 0.001
+
+angle += cast[float32](0.0001)
 
 
 while not w.Close():
     w.pollE()
 
+    
 
+    cube.render(w, angle)
 
 
     w.swap()
