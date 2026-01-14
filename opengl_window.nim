@@ -1,5 +1,4 @@
 import window
-import glfw
 
 
 var w = NWindow(1000, 1000, "OpenGL Window", vsync = true, 0.2, 0.3, 0.3, 1.0,)
@@ -62,20 +61,26 @@ let cubeVertices: seq[float32] = @[
 
 var cube = createModel(w.program, cubeVertices)
 
+# place cube in front of the camera
+cube.transform.pos = [0'f32, 0'f32, 0'f32]
 
-
-var angle = 0.001
-
-angle += cast[float32](0.0001)
-
+var angle: float32 = 0.01'f32
 
 while not w.Close():
     w.pollE()
 
-    
+    # animate rotation and render using the Model's transform
 
-    cube.render(w, angle)
+    cube.transform.rot = cube.transform.rot + vec3(0'f32, angle, 0'f32)
 
+    # set Phong shader uniforms
+    setVec3(cube.program.id, "lightPos", 2'f32, 0'f32, 5'f32)
+    setVec3(cube.program.id, "viewPos", 0'f32, 0'f32, 3'f32)
+    setVec3(cube.program.id, "lightColor", 1'f32, 1'f32, 1'f32)
+    setVec3(cube.program.id, "objectColor", 1'f32, 0.5'f32, 0.2'f32)
+    setFloat(cube.program.id, "shininess", 16'f32)
+
+    cube.render(w)
 
     w.swap()
 

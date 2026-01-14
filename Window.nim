@@ -1,33 +1,72 @@
 import glfw
 import opengl
 import math
+import stb_image/read as stbi
+
 
 
 var defaultVertexShader: cstring =
     """
     #version 330 core
-    layout (location = 0) in vec3 aPos;
+  layout (location = 0) in vec3 aPos;
 
-    uniform mat4 model;
-    uniform mat4 view;
-    uniform mat4 projection;
+  uniform mat4 model;
+  uniform mat4 view;
+  uniform mat4 projection;
 
-    void main()
-    {
-        gl_Position = projection * view * model * vec4(aPos, 1.0);
-    }
+  out vec3 FragPos;
+  out vec3 Normal;
 
-    """
+  void main()
+  {
+    vec4 worldPos = model * vec4(aPos, 1.0);
+    FragPos = vec3(worldPos);
+    // NOTE: we don't have a normal attribute in the simple mesh, so
+    // approximate using the transformed position. Replace with a
+    // proper normal attribute when available.
+    Normal = mat3(transpose(inverse(model))) * aPos;
+    gl_Position = projection * view * worldPos;
+  }
+
+  """
 
 var defaultFragmentShader: cstring =
-        """
-    #version 330 core
-    out vec4 FragColor;
-    void main()
-    {
-        FragColor = vec4(1.0, 0.5, 0.2, 1.0);
-    }
     """
+  #version 330 core
+  out vec4 FragColor;
+
+  in vec3 FragPos;
+  in vec3 Normal;
+
+  uniform vec3 lightPos;
+  uniform vec3 viewPos;
+  uniform vec3 lightColor;
+  uniform vec3 objectColor;
+  uniform float shininess;
+
+  void main()
+  {
+    // ambient
+    float ambientStrength = 0.05;
+    vec3 ambient = ambientStrength * lightColor;
+
+    // diffuse
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    float diff = max(dot(norm, lightDir), 0.0) * 1.5;
+    vec3 diffuse = diff * lightColor;
+
+    // specular
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
+    vec3 specular = spec * lightColor;
+
+    vec3 result = (ambient + diffuse + specular) * objectColor;
+    FragColor = vec4(result, 1.0);
+  }
+
+  """
 
 
 type Mat4 = array[16, float32]
@@ -55,8 +94,25 @@ proc translate(z: float32): Mat4 =
 
 
 proc setMat4(program: GLuint, name: cstring, mat: Mat4) =
+  glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
   glUniformMatrix4fv(loc, 1, GL_FALSE, addr mat[0])
+
+
+proc setVec3*(program: GLuint, name: cstring, x, y, z: float32) =
+  glUseProgram(program)
+  let loc = glGetUniformLocation(program, name)
+  glUniform3f(loc, x, y, z)
+
+proc setFloat*(program: GLuint, name: cstring, v: float32) =
+  glUseProgram(program)
+  let loc = glGetUniformLocation(program, name)
+  glUniform1f(loc, v)
+
+proc setInt*(program: GLuint, name: cstring, v: GLint) =
+  glUseProgram(program)
+  let loc = glGetUniformLocation(program, name)
+  glUniform1i(loc, v)
 
 proc rotateY(angle: float32): Mat4 =
   let c = cos(angle)
@@ -67,6 +123,81 @@ proc rotateY(angle: float32): Mat4 =
     -s, 0,  c, 0,
      0, 0,  0, 1
   ]
+
+
+type Vec3 = array[3, float32]
+
+proc `+`*(a, b: Vec3): Vec3 =
+  result[0] = a[0] + b[0]
+  result[1] = a[1] + b[1]
+  result[2] = a[2] + b[2]
+
+proc `-`*(a, b: Vec3): Vec3 =
+  result[0] = a[0] - b[0]
+  result[1] = a[1] - b[1]
+  result[2] = a[2] - b[2]
+
+proc vec3*(x, y, z: float32): Vec3 =
+  result[0] = x
+  result[1] = y
+  result[2] = z
+
+type Transform* = object
+  pos*: Vec3
+  rot*: Vec3 # rotations in radians: pitch(x), yaw(y), roll(z)
+  scale*: Vec3
+
+proc mulMat4(a, b: Mat4): Mat4 =
+  for r in 0..3:
+    for c in 0..3:
+      var s: float32 = 0'f32
+      for k in 0..3:
+        s += a[k*4 + r] * b[c*4 + k]
+      result[c*4 + r] = s
+
+proc rotateX(angle: float32): Mat4 =
+  let c = cos(angle)
+  let s = sin(angle)
+  result = [
+    1, 0, 0, 0,
+    0, c, -s, 0,
+    0, s,  c, 0,
+    0, 0, 0, 1
+  ]
+
+proc rotateZ(angle: float32): Mat4 =
+  let c = cos(angle)
+  let s = sin(angle)
+  result = [
+    c, -s, 0, 0,
+    s,  c, 0, 0,
+    0,  0, 1, 0,
+    0,  0, 0, 1
+  ]
+
+proc scaleMat(sx, sy, sz: float32): Mat4 =
+  result = [
+    sx, 0, 0, 0,
+    0, sy, 0, 0,
+    0, 0, sz, 0,
+    0, 0, 0, 1
+  ]
+
+proc translateVec(v: Vec3): Mat4 =
+  result = identityMat4()
+  result[12] = v[0]
+  result[13] = v[1]
+  result[14] = v[2]
+
+proc toMat4*(t: Transform): Mat4 =
+  let S = scaleMat(t.scale[0], t.scale[1], t.scale[2])
+  let Rx = rotateX(t.rot[0])
+  let Ry = rotateY(t.rot[1])
+  let Rz = rotateZ(t.rot[2])
+  # Combined rotation: R = Rz * Ry * Rx
+  let R = mulMat4(Rz, mulMat4(Ry, Rx))
+  let T = translateVec(t.pos)
+  result = mulMat4(T, mulMat4(R, S))
 
 
 
@@ -91,7 +222,7 @@ proc compileShader*(source: cstring; shaderType: GLenum): Shader =
 
     if success == 0:
         var infoLog: array[0..512, char]
-        glGetShaderInfoLog(shader, 512, nil, addr infoLog[0])
+        glGetShaderInfoLog(shader, 512, nil, cast[cstring](addr infoLog[0]))
         echo "Shader COMPILATION FAILED:"
         echo cast[cstring](addr infoLog[0])
         quit(1)
@@ -114,7 +245,7 @@ proc linkProgram*(vert: Shader; frag: Shader): ShaderProgram =
   glGetProgramiv(program, GL_LINK_STATUS, addr success)
   if success == 0:
     var infoLog: array[0..512, char]
-    glGetProgramInfoLog(program, 512, nil, addr infoLog[0])
+    glGetProgramInfoLog(program, 512, nil, cast[cstring](addr infoLog[0]))
     echo "PROGRAM LINK FAILED:"
     echo cast[cstring](addr infoLog[0])
     quit(1)
@@ -131,6 +262,7 @@ type
     vbo*: GLuint
     vertexCount*: int
     program*: ShaderProgram
+    transform*: Transform
 
 proc createModel*(program: ShaderProgram, vertices: seq[float32]): Model =
 
@@ -159,6 +291,9 @@ proc createModel*(program: ShaderProgram, vertices: seq[float32]): Model =
 
 
   glEnableVertexAttribArray(0)
+  result.transform.pos = [0'f32, 0'f32, 0'f32]
+  result.transform.rot = [0'f32, 0'f32, 0'f32]
+  result.transform.scale = [1'f32, 1'f32, 1'f32]
 
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
@@ -259,10 +394,10 @@ proc destroy*(w: var Window) =
         glfw.terminate()
 
 
-proc render*(m: Model, w: Window, angle: float32) =
+proc render*(m: Model, w: Window) =
   glUseProgram(m.program.id)
 
-  let model = rotateY(angle)
+  let model = m.transform.toMat4()
   let view = translate(-3.0'f32)
   let proj = perspective(
     degToRad(60'f32),
