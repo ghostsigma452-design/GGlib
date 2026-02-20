@@ -1,1 +1,4 @@
 nim c --run opengl_window.nim
+
+# Run this inside the 'include' folder of physx-c
+& "C:\Users\ghost_ixj0pwo\.nimble\pkgcache\githubcom_nimlangc2nim\c2nim.exe" --cpp --nep1 --prefix:CPx --out:physx_native.nim physx-c.h

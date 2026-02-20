@@ -60,18 +60,19 @@ let cubeVertices: seq[float32] = @[
 ]
 
 var cube = createModel(w.program, cubeVertices)
+var cube2 = createModel(w.program, cubeVertices)
 
 # place cube in front of the camera
-cube.transform.pos = [0'f32, 0'f32, 0'f32]
+cube.transform.pos = [0'f32, 0'f32, -1'f32]
+cube2.transform.pos = [1'f32, 0'f32, -1'f32]
 
-var angle: float32 = 0.01'f32
 
 while not w.Close():
     w.pollE()
 
     # animate rotation and render using the Model's transform
 
-    cube.transform.rot = cube.transform.rot + vec3(0'f32, angle, 0'f32)
+    cube.transform.rot = cube.transform.rot + vec3(0'f32, 0.01'f32, 0'f32)
 
     # set Phong shader uniforms
     setVec3(cube.program.id, "lightPos", 2'f32, 0'f32, 5'f32)
@@ -81,6 +82,7 @@ while not w.Close():
     setFloat(cube.program.id, "shininess", 16'f32)
 
     cube.render(w)
+    cube2.render(w)
 
     w.swap()
 

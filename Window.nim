@@ -413,20 +413,3 @@ proc render*(m: Model, w: Window) =
   glBindVertexArray(m.vao)
   glDrawArrays(GL_TRIANGLES, 0, GLsizei(m.vertexCount))
   glBindVertexArray(0)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
