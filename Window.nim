@@ -100,7 +100,7 @@ proc translate(z: float32): Mat4 =
 proc setMat4(program: GLuint, name: cstring, mat: Mat4) =
   glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
-  glUniformMatrix4fv(loc, 1, GL_FALSE, addr mat[0])
+  glUniformMatrix4fv(loc, 1, GL_FALSE, unsafeAddr mat[0])
 
 
 proc setVec3*(program: GLuint, name: cstring, x, y, z: float32) =
@@ -287,7 +287,7 @@ proc loadTexture*(path: string): GLuint =
 
   let format = if channels == 4: GL_RGBA else: GL_RGB
 
-  glTexImage2D(GL_TEXTURE_2D, 0, format.GLint, width.GLsizei, height.GLsizei, 0, format, GL_UNSIGNED_BYTE, addr data[0])
+  glTexImage2D(GL_TEXTURE_2D, 0, format.GLint, width.GLsizei, height.GLsizei, 0, format, GL_UNSIGNED_BYTE, unsafeAddr data[0])
   glGenerateMipmap(GL_TEXTURE_2D)
 
   # Free the memory from stbi
@@ -443,10 +443,10 @@ proc render*(m: Model, w: Window) =
   glUseProgram(m.program.id)
 
   # Lighting Uniforms (Setting defaults so it's not black)
-  setVec3(m.program.id, "lightPos", 1.2'f32, 1.0'f32, 2.0'f32)
-  setVec3(m.program.id, "viewPos", 0.0'f32, 0.0'f32, 3.0'f32)
-  setVec3(m.program.id, "lightColor", 1.0'f32, 1.0'f32, 1.0'f32)
-  setFloat(m.program.id, "shininess", 32.0'f32)
+  #setVec3(m.program.id, "lightPos", 1.2'f32, 1.0'f32, 2.0'f32)
+  #setVec3(m.program.id, "viewPos", 0.0'f32, 0.0'f32, 3.0'f32)
+  #setVec3(m.program.id, "lightColor", 1.0'f32, 1.0'f32, 1.0'f32)
+  #setFloat(m.program.id, "shininess", 32.0'f32)
 
   # Bind Texture
   glActiveTexture(GL_TEXTURE0)
