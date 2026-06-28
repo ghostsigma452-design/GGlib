@@ -264,6 +264,7 @@ type
   Model* = object
     vao*: GLuint
     vbo*: GLuint
+    ebo*: GLuint
     vertexCount*: int
     program*: ShaderProgram
     transform*: Transform
@@ -294,17 +295,24 @@ proc loadTexture*(path: string): GLuint =
   
   return textureID
 
-proc createModel*(program: ShaderProgram, vertices: seq[float32], texturePath: string = ""): Model =
-  var vao, vbo: GLuint
+proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[uint32], texturePath: string = ""): Model =
+  var vao, vbo, ebo: GLuint
   glGenVertexArrays(1, addr vao)
   glGenBuffers(1, addr vbo)
+  glGenBuffers(1, addr ebo)
 
   glBindVertexArray(vao)
   glBindBuffer(GL_ARRAY_BUFFER, vbo)
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
   glBufferData(
     GL_ARRAY_BUFFER,
     vertices.len * sizeof(float32),
     unsafeAddr vertices[0],
+    GL_STATIC_DRAW
+  )
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+    indices.len * sizeof(uint32),
+    unsafeAddr indices[0],
     GL_STATIC_DRAW
   )
 
@@ -336,8 +344,9 @@ proc createModel*(program: ShaderProgram, vertices: seq[float32], texturePath: s
 
   result.vao = vao
   result.vbo = vbo
+  result.ebo = ebo
   # vertexCount is now total floats divided by 5
-  result.vertexCount = vertices.len div 5
+  result.vertexCount = indices.len
   result.program = program
   
   if texturePath != "":
@@ -470,5 +479,5 @@ proc render*(m: Model, w: Window) =
   setMat4(m.program.id, "projection", proj)
 
   glBindVertexArray(m.vao)
-  glDrawArrays(GL_TRIANGLES, 0, GLsizei(m.vertexCount))
+  glDrawElements(GL_TRIANGLES, GLsizei(m.vertexCount), GL_UNSIGNED_INT, nil)
   glBindVertexArray(0)
