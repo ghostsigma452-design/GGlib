@@ -425,6 +425,14 @@ proc pollE*(w: var Window) =
         glfw.pollEvents()
         glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
+proc setSky*(w: var Window, r: float, b: float, g: float, a: float) = 
+    w.red = r
+    w.blue = b
+    w.green = g
+    w.alpha = a
+    glClearColor(r,g,b,a)
+
+
 proc swap*(w: var Window) =
     if w.w != nil:
         w.w.swapBuffers()
