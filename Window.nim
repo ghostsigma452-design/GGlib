@@ -260,17 +260,14 @@ proc linkProgram*(vert: Shader; frag: Shader): ShaderProgram =
   result.id = program
 
 
-type
-  Model* = object
-    vao*: GLuint
-    vbo*: GLuint
-    ebo*: GLuint
-    vertexCount*: int
-    program*: ShaderProgram
-    transform*: Transform
-    textureID*: GLuint # New: Each model holds its texture
+type 
+  Texture* = object 
+    TextureID*: GLuint
 
-proc loadTexture*(path: string): GLuint =
+proc getTextureID*(t: Texture): Gluint = 
+  return t.TextureID
+  
+proc loadTexture*(path: string): Texture =
   var width, height, channels: int
   # stbi.read returns the pixel data. Ensure stbi is configured correctly for Nim.
   let data = stbi.load(path, width, height, channels, stbi.Default)
@@ -293,9 +290,21 @@ proc loadTexture*(path: string): GLuint =
 
   # Free the memory from stbi
   
-  return textureID
+  result.TextureID = textureID
 
-proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[uint32], texturePath: string = ""): Model =
+
+type
+  Model* = object
+    vao*: GLuint
+    vbo*: GLuint
+    ebo*: GLuint
+    vertexCount*: int
+    program*: ShaderProgram
+    transform*: Transform
+    textureID*: GLuint # New: Each model holds its texture
+
+
+proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[uint32], t: Texture): Model =
   var vao, vbo, ebo: GLuint
   glGenVertexArrays(1, addr vao)
   glGenBuffers(1, addr vbo)
@@ -349,8 +358,8 @@ proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[u
   result.vertexCount = indices.len
   result.program = program
   
-  if texturePath != "":
-    result.textureID = loadTexture(texturePath)
+
+  result.textureID = t.getTextureID()
 
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)

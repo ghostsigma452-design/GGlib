@@ -2,7 +2,7 @@ import window
 
 
 var w = NWindow(1000, 1000, "OpenGL Window", vsync = true, 0.2, 0.3, 0.3, 1.0,)
-
+var shit = loadTexture("shit.png")
 # 8 unique vertices (X, Y, Z, U, V)
 let cubeVertices: seq[float32] = @[
     -0.5, -0.5,  0.5, 0.0, 0.0, # 0
@@ -24,8 +24,8 @@ let cubeIndices: seq[uint32] = @[
     3, 2, 6, 6, 7, 3, # Top
     4, 5, 1, 1, 0, 4  # Bottom
 ]
-var cube = createModel(w.program, cubeVertices, cubeIndices, "shit.png")
-var cube2 = createModel(w.program, cubeVertices, cubeIndices, "shit.png")
+var cube = createModel(w.program, cubeVertices, cubeIndices, shit)
+var cube2 = createModel(w.program, cubeVertices, cubeIndices, shit)
 
 # place cube in front of the camera
 cube.transform.pos = [0'f32, 0'f32, -1'f32]
