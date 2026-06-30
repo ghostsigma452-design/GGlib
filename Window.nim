@@ -391,7 +391,7 @@ type
         
         ## Create and initialize a new GLFW window. This uses the low-level
 ## GLFW API (`createWindow`, `makeContextCurrent`, `swapInterval`).
-proc NWindow*(width: int; height: int; title: string; vsync = true; red: float; green:float; blue:float; alpha: float, fragmentShader: cstring = defaultFragmentShader, vertexShader: cstring = defaultVertexShader): Window =
+proc NWindow*(width: int = 1000; height: int = 1000; title: string = "GGLib"; vsync = true; red: float = 0.2; green:float = 0.3; blue:float = 0.3; alpha: float = 1.0, fragmentShader: cstring = defaultFragmentShader, vertexShader: cstring = defaultVertexShader): Window =
     glfw.initialize()
 
     var c = DefaultOpenglWindowConfig
