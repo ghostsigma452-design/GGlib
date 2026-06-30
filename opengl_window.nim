@@ -1,4 +1,4 @@
-import window
+import GGLib
 
 
 var w = NWindow(1000, 1000, "OpenGL Window")
