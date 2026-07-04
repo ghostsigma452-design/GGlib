@@ -9,26 +9,26 @@ var defaultVertexShader: cstring =
     """
     #version 330 core
   layout (location = 0) in vec3 aPos;
-  layout (location = 1) in vec2 aTexCoord; // New attribute
+  layout (location = 1) in vec2 aTexCoord;
+  layout (location = 2) in vec3 aNormal; // New: Normal attribute
 
   uniform mat4 model;
   uniform mat4 view;
   uniform mat4 projection;
   
-
   out vec3 FragPos;
   out vec3 Normal;
-  out vec2 TexCoord; // Pass texture coordinates to fragment shader
+  out vec2 TexCoord;
 
   void main()
   {
     vec4 worldPos = model * vec4(aPos, 1.0);
     FragPos = vec3(worldPos);
-    Normal = mat3(transpose(inverse(model))) * aPos;
-    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    // Properly transform normals avoiding non-uniform scaling distortions
+    Normal = mat3(transpose(inverse(model))) * aNormal; 
+    gl_Position = projection * view * worldPos;
     TexCoord = aTexCoord;
   }
-
   """
 
 var defaultFragmentShader: cstring =
@@ -38,17 +38,16 @@ var defaultFragmentShader: cstring =
 
   in vec3 FragPos;
   in vec3 Normal;
-  in vec2 TexCoord; // New: Received from vertex shader
+  in vec2 TexCoord;
 
   uniform vec3 lightPos;
   uniform vec3 viewPos;
   uniform vec3 lightColor;
-  uniform sampler2D texture_diffuse1; // New: The texture sampler
+  uniform sampler2D texture_diffuse1;
   uniform float shininess;
 
   void main()
   {
-    // Sample the color from the texture at the current UV coordinate
     vec3 objectColor = texture(texture_diffuse1, TexCoord).rgb;
 
     // ambient
@@ -67,14 +66,13 @@ var defaultFragmentShader: cstring =
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
     vec3 specular = spec * lightColor;
 
-    // Combine lighting with the sampled texture color
     vec3 result = (ambient + diffuse + specular) * objectColor;
     FragColor = vec4(result, 1.0);
   }
   """
 
 
-proc setMat4(program: GLuint, name: cstring, mat: Mat4) =
+proc setMat4(program: GLuint, name: cstring, mat: Mat4f) =
   glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
   var m = mat
@@ -85,6 +83,11 @@ proc setVec3*(program: GLuint, name: cstring, x, y, z: float32) =
   let loc = glGetUniformLocation(program, name)
   glUniform3f(loc, x, y, z)
 
+proc setVec3v*(program: GLuint, name: cstring, v: Vec3f) =
+  glUseProgram(program)
+  let loc = glGetUniformLocation(program, name)
+  glUniform3f(loc, v.x, v.y, v.z)
+
 proc setFloat*(program: GLuint, name: cstring, v: float32) =
   glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
@@ -94,6 +97,40 @@ proc setInt*(program: GLuint, name: cstring, v: GLint) =
   glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
   glUniform1i(loc, v)
+
+
+# --- CAMERA SYSTEM ---
+type
+  Camera* = object
+    pos*: Vec3f
+    front*: Vec3f
+    up*: Vec3f
+    right*: Vec3f
+    worldUp*: Vec3f
+    yaw*: float32
+    pitch*: float32
+
+proc updateCameraVectors*(c: var Camera) =
+  var front: Vec3f
+  front.x = cos(degToRad(c.yaw)) * cos(degToRad(c.pitch))
+  front.y = sin(degToRad(c.pitch))
+  front.z = sin(degToRad(c.yaw)) * cos(degToRad(c.pitch))
+  c.front = normalize(front)
+  c.right = normalize(cross(c.front, c.worldUp))
+  c.up    = normalize(cross(c.right, c.front))
+
+proc newCamera*(pos: Vec3f = vec3(0.0f, 0.0f, 3.0f), yaw: float32 = -90.0f, pitch: float32 = 0.0f): Camera =
+  result.pos = pos
+  result.worldUp = vec3(0.0f, 1.0f, 0.0f)
+  result.yaw = yaw
+  result.pitch = pitch
+  result.front = vec3(0.0f, 0.0f, -1.0f)
+  result.updateCameraVectors()
+
+proc getViewMatrix*(c: Camera): Mat4f =
+  return lookAt(c.pos, c.pos + c.front, c.up)
+# ---------------------
+
 
 type Transform* = object
   pos*: Vec3f
@@ -115,19 +152,15 @@ type
 
 proc compileShader*(source: cstring; shaderType: GLenum): Shader =
     var shader = glCreateShader(shaderType)
-
-    # convert cstring -> string so Nim stops crying
     let srcStr = $source
     let srcArr = allocCStringArray([srcStr])
 
     glShaderSource(shader, 1, srcArr, nil)
     deallocCStringArray(srcArr)
-
     glCompileShader(shader)
 
     var success: GLint
     glGetShaderiv(shader, GL_COMPILE_STATUS, addr success)
-
     if success == 0:
         var infoLog: array[0..512, char]
         glGetShaderInfoLog(shader, 512, nil, cast[cstring](addr infoLog[0]))
@@ -136,8 +169,6 @@ proc compileShader*(source: cstring; shaderType: GLenum): Shader =
         quit(1)
 
     result.id = shader
-
-
 
 type
   ShaderProgram* = object
@@ -160,9 +191,7 @@ proc linkProgram*(vert: Shader; frag: Shader): ShaderProgram =
 
   glDeleteShader(vert.id)
   glDeleteShader(frag.id)
-
   result.id = program
-
 
 type 
   Texture* = object 
@@ -173,15 +202,12 @@ proc getTextureID*(t: Texture): Gluint =
   
 proc loadTexture*(path: string): Texture =
   var width, height, channels: int
-  # stbi.read returns the pixel data. Ensure stbi is configured correctly for Nim.
   let data = stbi.load(path, width, height, channels, stbi.Default)
   
-
   var textureID: GLuint
   glGenTextures(1, addr textureID)
   glBindTexture(GL_TEXTURE_2D, textureID)
 
-  # Wrapping/Filtering options
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
@@ -191,11 +217,8 @@ proc loadTexture*(path: string): Texture =
 
   glTexImage2D(GL_TEXTURE_2D, 0, format.GLint, width.GLsizei, height.GLsizei, 0, format, GL_UNSIGNED_BYTE, unsafeAddr data[0])
   glGenerateMipmap(GL_TEXTURE_2D)
-
-  # Free the memory from stbi
   
   result.TextureID = textureID
-
 
 type
   Model* = object
@@ -205,8 +228,7 @@ type
     vertexCount*: int
     program*: ShaderProgram
     transform*: Transform
-    textureID*: GLuint # New: Each model holds its texture
-
+    textureID*: GLuint 
 
 proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[uint32], t: Texture): Model =
   var vao, vbo, ebo: GLuint
@@ -235,7 +257,7 @@ proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[u
     GLint(3),
     GLenum(0x1406), # GL_FLOAT
     GL_FALSE,
-    GLsizei(5 * sizeof(float32)), # Stride: 5 floats per vertex
+    GLsizei(8 * sizeof(float32)), # Stride: 8 floats (Pos:3, Norm:3, Tex:2)
     cast[pointer](nil)
   )
   glEnableVertexAttribArray(0)
@@ -243,13 +265,24 @@ proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[u
   # --- TEXTURE ATTRIBUTE (Location 1) ---
   glVertexAttribPointer(
     GLuint(1),
-    GLint(2),        # UVs are only 2 components (U, V)
-    GLenum(0x1406),  # GL_FLOAT
+    GLint(2),
+    GLenum(0x1406), 
     GL_FALSE,
-    GLsizei(5 * sizeof(float32)), # Stride: still 5 floats
-    cast[pointer](3 * sizeof(float32)) # Offset: Skip the first 3 floats (X,Y,Z)
+    GLsizei(8 * sizeof(float32)),
+    cast[pointer](6 * sizeof(float32)) # Offset: 6 floats (Skip 3 Pos + 3 Norm)
   )
   glEnableVertexAttribArray(1)
+
+  # --- NORMAL ATTRIBUTE (Location 2) ---
+  glVertexAttribPointer(
+    GLuint(2),
+    GLint(3), 
+    GLenum(0x1406), 
+    GL_FALSE,
+    GLsizei(8 * sizeof(float32)),
+    cast[pointer](3 * sizeof(float32)) # Offset: 3 floats (Skip 3 Pos)
+  )
+  glEnableVertexAttribArray(2)
 
   result.transform.pos = vec3(0'f32, 0'f32, 0'f32)
   result.transform.rot = vec3(0'f32, 0'f32, 0'f32)
@@ -258,26 +291,15 @@ proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[u
   result.vao = vao
   result.vbo = vbo
   result.ebo = ebo
-  # vertexCount is now total floats divided by 5
   result.vertexCount = indices.len
   result.program = program
-  
-
   result.textureID = t.getTextureID()
 
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
 
 
-
-
-
-
-
-
-
 type
-    ## `Window` is a small wrapper around a GLFW window handle and metadata.
     Window* = object
         w*: glfw.Window
         width*: int
@@ -292,17 +314,12 @@ type
         fragmentShader*: Shader
         program*: ShaderProgram
         
-        
-        ## Create and initialize a new GLFW window. This uses the low-level
-## GLFW API (`createWindow`, `makeContextCurrent`, `swapInterval`).
 proc NWindow*(width: int = 1000; height: int = 1000; title: string = "GGLib"; vsync = true; red: float = 0.2; green:float = 0.3; blue:float = 0.3; alpha: float = 1.0, fragmentShader: cstring = defaultFragmentShader, vertexShader: cstring = defaultVertexShader): Window =
     glfw.initialize()
-
     var c = DefaultOpenglWindowConfig
-
     c.size = (width, height)
     c.title = title
-    c.version = glv33          # This is the part you MUST change
+    c.version = glv33
     c.forwardCompat = true
 
     let w = newWindow(c)
@@ -318,9 +335,7 @@ proc NWindow*(width: int = 1000; height: int = 1000; title: string = "GGLib"; vs
 
     loadExtensions()
     glClearColor(red, green, blue, alpha)
-
     glEnable(GL_DEPTH_TEST)
-
 
     var id: Shader = compileShader(vertexShader, GL_VERTEX_SHADER)
     var id2: Shader = compileShader(fragmentShader, GL_FRAGMENT_SHADER)
@@ -354,7 +369,6 @@ proc setSky*(w: var Window, r: float, b: float, g: float, a: float) =
     w.alpha = a
     glClearColor(r,g,b,a)
 
-
 proc swap*(w: var Window) =
     if w.w != nil:
         w.w.swapBuffers()
@@ -368,15 +382,14 @@ proc destroy*(w: var Window) =
         w.w.destroy()
         glfw.terminate()
 
-
-proc render*(m: Model, w: Window) =
+proc render*(m: Model, w: Window, cam: Camera) =
   glUseProgram(m.program.id)
 
-  # Lighting Uniforms (Setting defaults so it's not black)
-  #setVec3(m.program.id, "lightPos", 1.2'f32, 1.0'f32, 2.0'f32)
-  #setVec3(m.program.id, "viewPos", 0.0'f32, 0.0'f32, 3.0'f32)
-  #setVec3(m.program.id, "lightColor", 1.0'f32, 1.0'f32, 1.0'f32)
-  #setFloat(m.program.id, "shininess", 32.0'f32)
+  # Lighting Uniforms (Activated)
+  setVec3(m.program.id, "lightPos", 1.2'f32, 1.0'f32, 2.0'f32)
+  setVec3v(m.program.id, "viewPos", cam.pos)
+  setVec3(m.program.id, "lightColor", 1.0'f32, 1.0'f32, 1.0'f32)
+  setFloat(m.program.id, "shininess", 32.0'f32)
 
   # Bind Texture
   glActiveTexture(GL_TEXTURE0)
@@ -384,8 +397,7 @@ proc render*(m: Model, w: Window) =
   setInt(m.program.id, "texture_diffuse1", 0)
 
   let model = m.transform.toMat4()
-  var view = mat4(1.0f)
-  view = translate(view, vec3(0.0'f32, 0.0'f32, -3.0'f32))
+  let view = cam.getViewMatrix()
   let proj = perspective(degToRad(60'f32), float32(w.width) / float32(w.height), 0.1'f32, 100'f32)
 
   setMat4(m.program.id, "model", model)
