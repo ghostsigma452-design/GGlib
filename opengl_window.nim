@@ -1,4 +1,5 @@
 import GGLib
+import glm
 
 
 var w = NWindow(1000, 1000, "OpenGL Window")
@@ -28,8 +29,8 @@ var cube = createModel(w.program, cubeVertices, cubeIndices, shit)
 var cube2 = createModel(w.program, cubeVertices, cubeIndices, shit)
 
 # place cube in front of the camera
-cube.transform.pos = [0'f32, 0'f32, -1'f32]
-cube2.transform.pos = [1'f32, 0'f32, -1'f32]
+cube.transform.pos = vec3f(0'f32, 0'f32, -1'f32)
+cube2.transform.pos = vec3f(1'f32, 0'f32, -1'f32)
 
 w.setSky(1,0,0,0)
 

@@ -2,6 +2,7 @@ import glfw
 import opengl
 import math
 import stb_image/read as stbi
+import glm
 
 
 var defaultVertexShader: cstring =
@@ -73,35 +74,11 @@ var defaultFragmentShader: cstring =
   """
 
 
-type Mat4 = array[16, float32]
-
-proc identityMat4(): Mat4 =
-  result = [
-    1,0,0,0,
-    0,1,0,0,
-    0,0,1,0,
-    0,0,0,1
-  ]
-
-proc perspective(fov, aspect, near, far: float32): Mat4 =
-  let f = 1.0 / tan(fov / 2)
-  result = [
-        float32(f / aspect), 0'f32, 0'f32, 0'f32,
-        0'f32, float32(f), 0'f32, 0'f32,
-        0'f32, 0'f32, float32((far + near) / (near - far)), -1'f32,
-        0'f32, 0'f32, float32(2 * far * near / (near - far)), 0'f32
-    ]
-
-proc translate(z: float32): Mat4 =
-  result = identityMat4()
-  result[14] = z
-
-
 proc setMat4(program: GLuint, name: cstring, mat: Mat4) =
   glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
-  glUniformMatrix4fv(loc, 1, GL_FALSE, unsafeAddr mat[0])
-
+  var m = mat
+  glUniformMatrix4fv(loc, 1, GL_FALSE, m.caddr)
 
 proc setVec3*(program: GLuint, name: cstring, x, y, z: float32) =
   glUseProgram(program)
@@ -118,92 +95,19 @@ proc setInt*(program: GLuint, name: cstring, v: GLint) =
   let loc = glGetUniformLocation(program, name)
   glUniform1i(loc, v)
 
-proc rotateY(angle: float32): Mat4 =
-  let c = cos(angle)
-  let s = sin(angle)
-  result = [
-     c, 0,  s, 0,
-     0, 1,  0, 0,
-    -s, 0,  c, 0,
-     0, 0,  0, 1
-  ]
-
-
-type Vec3 = array[3, float32]
-
-proc `+`*(a, b: Vec3): Vec3 =
-  result[0] = a[0] + b[0]
-  result[1] = a[1] + b[1]
-  result[2] = a[2] + b[2]
-
-proc `-`*(a, b: Vec3): Vec3 =
-  result[0] = a[0] - b[0]
-  result[1] = a[1] - b[1]
-  result[2] = a[2] - b[2]
-
-proc vec3*(x, y, z: float32): Vec3 =
-  result[0] = x
-  result[1] = y
-  result[2] = z
-
 type Transform* = object
-  pos*: Vec3
-  rot*: Vec3 # rotations in radians: pitch(x), yaw(y), roll(z)
-  scale*: Vec3
+  pos*: Vec3f
+  rot*: Vec3f # rotations in radians: pitch(x), yaw(y), roll(z)
+  scale*: Vec3f
 
-proc mulMat4(a, b: Mat4): Mat4 =
-  for r in 0..3:
-    for c in 0..3:
-      var s: float32 = 0'f32
-      for k in 0..3:
-        s += a[k*4 + r] * b[c*4 + k]
-      result[c*4 + r] = s
-
-proc rotateX(angle: float32): Mat4 =
-  let c = cos(angle)
-  let s = sin(angle)
-  result = [
-    1, 0, 0, 0,
-    0, c, -s, 0,
-    0, s,  c, 0,
-    0, 0, 0, 1
-  ]
-
-proc rotateZ(angle: float32): Mat4 =
-  let c = cos(angle)
-  let s = sin(angle)
-  result = [
-    c, -s, 0, 0,
-    s,  c, 0, 0,
-    0,  0, 1, 0,
-    0,  0, 0, 1
-  ]
-
-proc scaleMat(sx, sy, sz: float32): Mat4 =
-  result = [
-    sx, 0, 0, 0,
-    0, sy, 0, 0,
-    0, 0, sz, 0,
-    0, 0, 0, 1
-  ]
-
-proc translateVec(v: Vec3): Mat4 =
-  result = identityMat4()
-  result[12] = v[0]
-  result[13] = v[1]
-  result[14] = v[2]
-
-proc toMat4*(t: Transform): Mat4 =
-  let S = scaleMat(t.scale[0], t.scale[1], t.scale[2])
-  let Rx = rotateX(t.rot[0])
-  let Ry = rotateY(t.rot[1])
-  let Rz = rotateZ(t.rot[2])
-  # Combined rotation: R = Rz * Ry * Rx
-  let R = mulMat4(Rz, mulMat4(Ry, Rx))
-  let T = translateVec(t.pos)
-  result = mulMat4(T, mulMat4(R, S))
-
-
+proc toMat4*(t: Transform): Mat4f =
+  var m = mat4(1.0f)
+  m = translate(m, t.pos)
+  m = rotate(m, t.rot.z, vec3(0.0f, 0.0f, 1.0f))
+  m = rotate(m, t.rot.y, vec3(0.0f, 1.0f, 0.0f))
+  m = rotate(m, t.rot.x, vec3(1.0f, 0.0f, 0.0f))
+  m = scale(m, t.scale)
+  result = m
 
 type
   Shader* = object
@@ -347,9 +251,9 @@ proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[u
   )
   glEnableVertexAttribArray(1)
 
-  result.transform.pos = [0'f32, 0'f32, 0'f32]
-  result.transform.rot = [0'f32, 0'f32, 0'f32]
-  result.transform.scale = [1'f32, 1'f32, 1'f32]
+  result.transform.pos = vec3(0'f32, 0'f32, 0'f32)
+  result.transform.rot = vec3(0'f32, 0'f32, 0'f32)
+  result.transform.scale = vec3(1'f32, 1'f32, 1'f32)
 
   result.vao = vao
   result.vbo = vbo
@@ -480,7 +384,8 @@ proc render*(m: Model, w: Window) =
   setInt(m.program.id, "texture_diffuse1", 0)
 
   let model = m.transform.toMat4()
-  let view = translate(-3.0'f32)
+  var view = mat4(1.0f)
+  view = translate(view, vec3(0.0'f32, 0.0'f32, -3.0'f32))
   let proj = perspective(degToRad(60'f32), float32(w.width) / float32(w.height), 0.1'f32, 100'f32)
 
   setMat4(m.program.id, "model", model)
