@@ -1,57 +1,14 @@
 import GGLib
+import GGObj
 import glm
 
 
 var w = NWindow(1000, 1000, "OpenGL Window")
 var shit = loadTexture("shit.png")
 var c = newCamera()
-let cubeVertices: seq[float32] = @[
-    # --- Front Face (Normal: 0, 0, 1) ---
-    -0.5'f, -0.5'f,  0.5'f,   0.0'f,  0.0'f,  1.0'f,   0.0'f, 0.0'f, # 0
-     0.5'f, -0.5'f,  0.5'f,   0.0'f,  0.0'f,  1.0'f,   1.0'f, 0.0'f, # 1
-     0.5'f,  0.5'f,  0.5'f,   0.0'f,  0.0'f,  1.0'f,   1.0'f, 1.0'f, # 2
-    -0.5'f,  0.5'f,  0.5'f,   0.0'f,  0.0'f,  1.0'f,   0.0'f, 1.0'f, # 3
-
-    # --- Back Face (Normal: 0, 0, -1) ---
-    -0.5'f, -0.5'f, -0.5'f,   0.0'f,  0.0'f, -1.0'f,   1.0'f, 0.0'f, # 4
-     0.5'f, -0.5'f, -0.5'f,   0.0'f,  0.0'f, -1.0'f,   0.0'f, 0.0'f, # 5
-     0.5'f,  0.5'f, -0.5'f,   0.0'f,  0.0'f, -1.0'f,   0.0'f, 1.0'f, # 6
-    -0.5'f,  0.5'f, -0.5'f,   0.0'f,  0.0'f, -1.0'f,   1.0'f, 1.0'f, # 7
-
-    # --- Left Face (Normal: -1, 0, 0) ---
-    -0.5'f, -0.5'f, -0.5'f,  -1.0'f,  0.0'f,  0.0'f,   0.0'f, 0.0'f, # 8
-    -0.5'f, -0.5'f,  0.5'f,  -1.0'f,  0.0'f,  0.0'f,   1.0'f, 0.0'f, # 9
-    -0.5'f,  0.5'f,  0.5'f,  -1.0'f,  0.0'f,  0.0'f,   1.0'f, 1.0'f, # 10
-    -0.5'f,  0.5'f, -0.5'f,  -1.0'f,  0.0'f,  0.0'f,   0.0'f, 1.0'f, # 11
-
-    # --- Right Face (Normal: 1, 0, 0) ---
-     0.5'f, -0.5'f,  0.5'f,   1.0'f,  0.0'f,  0.0'f,   0.0'f, 0.0'f, # 12
-     0.5'f, -0.5'f, -0.5'f,   1.0'f,  0.0'f,  0.0'f,   1.0'f, 0.0'f, # 13
-     0.5'f,  0.5'f, -0.5'f,   1.0'f,  0.0'f,  0.0'f,   1.0'f, 1.0'f, # 14
-     0.5'f,  0.5'f,  0.5'f,   1.0'f,  0.0'f,  0.0'f,   0.0'f, 1.0'f, # 15
-
-    # --- Top Face (Normal: 0, 1, 0) ---
-    -0.5'f,  0.5'f,  0.5'f,   0.0'f,  1.0'f,  0.0'f,   0.0'f, 0.0'f, # 16
-     0.5'f,  0.5'f,  0.5'f,   0.0'f,  1.0'f,  0.0'f,   1.0'f, 0.0'f, # 17
-     0.5'f,  0.5'f, -0.5'f,   0.0'f,  1.0'f,  0.0'f,   1.0'f, 1.0'f, # 18
-    -0.5'f,  0.5'f, -0.5'f,   0.0'f,  1.0'f,  0.0'f,   0.0'f, 1.0'f, # 19
-
-    # --- Bottom Face (Normal: 0, -1, 0) ---
-    -0.5'f, -0.5'f, -0.5'f,   0.0'f, -1.0'f,  0.0'f,   0.0'f, 0.0'f, # 20
-     0.5'f, -0.5'f, -0.5'f,   0.0'f, -1.0'f,  0.0'f,   1.0'f, 0.0'f, # 21
-     0.5'f, -0.5'f,  0.5'f,   0.0'f, -1.0'f,  0.0'f,   1.0'f, 1.0'f, # 22
-    -0.5'f, -0.5'f,  0.5'f,   0.0'f, -1.0'f,  0.0'f,   0.0'f, 1.0'f  # 23
-]
-
-# Updated indices referencing the 24 individual vertices
-let cubeIndices: seq[uint32] = @[
-    0,  1,  2,  2,  3,  0,  # Front
-    4,  5,  6,  6,  7,  4,  # Back
-    8,  9,  10, 10, 11, 8,  # Left
-    12, 13, 14, 14, 15, 12, # Right
-    16, 17, 18, 18, 19, 16, # Top
-    20, 21, 22, 22, 23, 20  # Bottom
-]
+var modelData = GGObj.parseOBJ("examples/examples_cube.obj")
+var cubeVertices = modelData[0]
+var cubeIndices = modelData[1]
 var cube = createModel(w.program, cubeVertices, cubeIndices, shit)
 var cube2 = createModel(w.program, cubeVertices, cubeIndices, shit)
 
