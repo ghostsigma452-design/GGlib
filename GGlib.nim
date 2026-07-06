@@ -74,7 +74,7 @@ var defaultFragmentShader: cstring =
 proc speed*(f: float): float = 
   f * 0.03
 
-proc setMat4(program: GLuint, name: cstring, mat: Mat4f) =
+proc setMat4*(program: GLuint, name: cstring, mat: Mat4f) =
   glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
   var m = mat
