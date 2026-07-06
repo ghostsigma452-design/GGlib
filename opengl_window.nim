@@ -78,7 +78,6 @@ while not w.Close():
 
     cube.render(w, c)
     cube2.render(w, c)
-    echo cube.ebo
 
     w.swap()
 
