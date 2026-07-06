@@ -6,7 +6,7 @@ import glm
 var w = NWindow(1000, 1000, "OpenGL Window")
 var shit = loadTexture("shit.png")
 var c = newCamera()
-var modelData = GGObj.parseOBJ("examples/examples_cube.obj")
+var modelData = GGObj.parseOBJ("examples/sphere.obj")
 var cubeVertices = modelData[0]
 var cubeIndices = modelData[1]
 var cube = createModel(w.program, cubeVertices, cubeIndices, shit)
