@@ -7,7 +7,7 @@ import glm
 
 var defaultVertexShader: cstring =
     """
-    #version 330 core
+    #version 460 core
   layout (location = 0) in vec3 aPos;
   layout (location = 1) in vec2 aTexCoord;
   layout (location = 2) in vec3 aNormal; // New: Normal attribute
@@ -33,7 +33,7 @@ var defaultVertexShader: cstring =
 
 var defaultFragmentShader: cstring =
     """
-  #version 330 core
+  #version 460 core
   out vec4 FragColor;
 
   in vec3 FragPos;
@@ -321,7 +321,7 @@ proc NWindow*(width: int = 1000; height: int = 1000; title: string = "GGLib"; vs
     var c = DefaultOpenglWindowConfig
     c.size = (width, height)
     c.title = title
-    c.version = glv33
+    c.version = glv46
     c.forwardCompat = true
 
     let w = newWindow(c)
