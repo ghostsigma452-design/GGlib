@@ -4,7 +4,6 @@ import math
 import stb_image/read as stbi
 import glm
 
-
 var defaultVertexShader: cstring =
     """
     #version 460 core
@@ -74,31 +73,27 @@ var defaultFragmentShader: cstring =
 proc speed*(f: float): float = 
   f * 0.03
 
+# --- MODERN DSA UNIFORMS ---
 proc setMat4*(program: GLuint, name: cstring, mat: Mat4f) =
-  glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
   var m = mat
-  glUniformMatrix4fv(loc, 1, GL_FALSE, m.caddr)
+  glProgramUniformMatrix4fv(program, loc, 1, GL_FALSE, m.caddr)
 
 proc setVec3*(program: GLuint, name: cstring, x, y, z: float32) =
-  glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
-  glUniform3f(loc, x, y, z)
+  glProgramUniform3f(program, loc, x, y, z)
 
 proc setVec3v*(program: GLuint, name: cstring, v: Vec3f) =
-  glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
-  glUniform3f(loc, v.x, v.y, v.z)
+  glProgramUniform3f(program, loc, v.x, v.y, v.z)
 
 proc setFloat*(program: GLuint, name: cstring, v: float32) =
-  glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
-  glUniform1f(loc, v)
+  glProgramUniform1f(program, loc, v)
 
 proc setInt*(program: GLuint, name: cstring, v: GLint) =
-  glUseProgram(program)
   let loc = glGetUniformLocation(program, name)
-  glUniform1i(loc, v)
+  glProgramUniform1i(program, loc, v)
 
 
 # --- CAMERA SYSTEM ---
@@ -207,18 +202,24 @@ proc loadTexture*(path: string): Texture =
   let data = stbi.load(path, width, height, channels, stbi.Default)
   
   var textureID: GLuint
-  glGenTextures(1, addr textureID)
-  glBindTexture(GL_TEXTURE_2D, textureID)
+  # --- DSA: Create Texture & Allocate Immutable Storage ---
+  glCreateTextures(GL_TEXTURE_2D, 1, addr textureID)
 
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_REPEAT)
+  glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
 
-  let format = if channels == 4: GL_RGBA else: GL_RGB
+  let internalFormat = if channels == 4: GL_RGBA8 else: GL_RGB8
+  let dataFormat = if channels == 4: GL_RGBA else: GL_RGB
+  
+  # Calculate mipmap levels
+  let levels = GLsizei(floor(log2(float(max(width, height)))) + 1)
 
-  glTexImage2D(GL_TEXTURE_2D, 0, format.GLint, width.GLsizei, height.GLsizei, 0, format, GL_UNSIGNED_BYTE, unsafeAddr data[0])
-  glGenerateMipmap(GL_TEXTURE_2D)
+  # Allocate and upload data without binding
+  glTextureStorage2D(textureID, levels, internalFormat.GLenum, width.GLsizei, height.GLsizei)
+  glTextureSubImage2D(textureID, 0, 0, 0, width.GLsizei, height.GLsizei, dataFormat.GLenum, GL_UNSIGNED_BYTE, unsafeAddr data[0])
+  glGenerateTextureMipmap(textureID)
   
   result.TextureID = textureID
 
@@ -234,57 +235,36 @@ type
 
 proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[uint32], t: Texture): Model =
   var vao, vbo, ebo: GLuint
-  glGenVertexArrays(1, addr vao)
-  glGenBuffers(1, addr vbo)
-  glGenBuffers(1, addr ebo)
+  
+  # --- DSA: Create VAOs and Buffers ---
+  glCreateVertexArrays(1, addr vao)
+  glCreateBuffers(1, addr vbo)
+  glCreateBuffers(1, addr ebo)
 
-  glBindVertexArray(vao)
-  glBindBuffer(GL_ARRAY_BUFFER, vbo)
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
-  glBufferData(
-    GL_ARRAY_BUFFER,
-    vertices.len * sizeof(float32),
-    unsafeAddr vertices[0],
-    GL_STATIC_DRAW
-  )
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-    indices.len * sizeof(uint32),
-    unsafeAddr indices[0],
-    GL_STATIC_DRAW
-  )
+  # Immutable data allocation
+  let vboSize = vertices.len * sizeof(float32)
+  let eboSize = indices.len * sizeof(uint32)
+  glNamedBufferStorage(vbo, vboSize, unsafeAddr vertices[0], GLbitfield(0))
+  glNamedBufferStorage(ebo, eboSize, unsafeAddr indices[0], GLbitfield(0))
+
+  # Tie buffers to the VAO directly
+  glVertexArrayVertexBuffer(vao, 0, vbo, 0, GLsizei(8 * sizeof(float32)))
+  glVertexArrayElementBuffer(vao, ebo)
 
   # --- POSITION ATTRIBUTE (Location 0) ---
-  glVertexAttribPointer(
-    GLuint(0),
-    GLint(3),
-    GLenum(0x1406), # GL_FLOAT
-    GL_FALSE,
-    GLsizei(8 * sizeof(float32)), # Stride: 8 floats (Pos:3, Norm:3, Tex:2)
-    cast[pointer](nil)
-  )
-  glEnableVertexAttribArray(0)
+  glEnableVertexArrayAttrib(vao, 0)
+  glVertexArrayAttribFormat(vao, 0, 3, GLenum(0x1406), GL_FALSE, 0)
+  glVertexArrayAttribBinding(vao, 0, 0)
 
   # --- TEXTURE ATTRIBUTE (Location 1) ---
-  glVertexAttribPointer(
-    GLuint(1),
-    GLint(2),
-    GLenum(0x1406), 
-    GL_FALSE,
-    GLsizei(8 * sizeof(float32)),
-    cast[pointer](6 * sizeof(float32)) # Offset: 6 floats (Skip 3 Pos + 3 Norm)
-  )
-  glEnableVertexAttribArray(1)
+  glEnableVertexArrayAttrib(vao, 1)
+  glVertexArrayAttribFormat(vao, 1, 2, GLenum(0x1406), GL_FALSE, GLuint(6 * sizeof(float32)))
+  glVertexArrayAttribBinding(vao, 1, 0)
 
   # --- NORMAL ATTRIBUTE (Location 2) ---
-  glVertexAttribPointer(
-    GLuint(2),
-    GLint(3), 
-    GLenum(0x1406), 
-    GL_FALSE,
-    GLsizei(8 * sizeof(float32)),
-    cast[pointer](3 * sizeof(float32)) # Offset: 3 floats (Skip 3 Pos)
-  )
-  glEnableVertexAttribArray(2)
+  glEnableVertexArrayAttrib(vao, 2)
+  glVertexArrayAttribFormat(vao, 2, 3, GLenum(0x1406), GL_FALSE, GLuint(3 * sizeof(float32)))
+  glVertexArrayAttribBinding(vao, 2, 0)
 
   result.transform.pos = vec3(0'f32, 0'f32, 0'f32)
   result.transform.rot = vec3(0'f32, 0'f32, 0'f32)
@@ -296,9 +276,6 @@ proc createModel*(program: ShaderProgram, vertices: seq[float32], indices: seq[u
   result.vertexCount = indices.len
   result.program = program
   result.textureID = t.getTextureID()
-
-  glBindBuffer(GL_ARRAY_BUFFER, 0)
-  glBindVertexArray(0)
 
 
 type
@@ -387,15 +364,14 @@ proc destroy*(w: var Window) =
 proc render*(m: Model, w: Window, cam: Camera) =
   glUseProgram(m.program.id)
 
-  # Lighting Uniforms (Activated)
+  # Lighting Uniforms (Set using the program ID directly)
   setVec3(m.program.id, "lightPos", 1.2'f32, 1.0'f32, 2.0'f32)
   setVec3v(m.program.id, "viewPos", cam.pos)
   setVec3(m.program.id, "lightColor", 1.0'f32, 1.0'f32, 1.0'f32)
   setFloat(m.program.id, "shininess", 32.0'f32)
 
-  # Bind Texture
-  glActiveTexture(GL_TEXTURE0)
-  glBindTexture(GL_TEXTURE_2D, m.textureID)
+  # --- DSA: Bind Texture Directly to Unit ---
+  glBindTextureUnit(0, m.textureID)
   setInt(m.program.id, "texture_diffuse1", 0)
 
   let model = m.transform.toMat4()
